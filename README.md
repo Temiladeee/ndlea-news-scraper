@@ -12,7 +12,7 @@ Event-level extraction of drug-enforcement incidents from the
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ndlea-news-scraper.git
+git clone https://github.com/Temiladeee/ndlea-news-scraper.git
 cd ndlea-news-scraper
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
