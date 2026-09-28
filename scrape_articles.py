@@ -1,74 +1,33 @@
-# Cell 3: Article page scraper
+def fetch_article(url):
+    r = requests.get(url, headers=HEADERS, timeout=20)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "lxml")
 
-def parse_publication_date(raw: str) -> Optional[str]:
-    """Return ISO date YYYY-MM-DD or None."""
-    if not raw or not raw.strip():
-        return None
+    h1 = soup.find("h1")
+    title = h1.get_text(strip=True) if h1 else None
+
+    # Header line looks like "May 10, 2026 - 10:25" -> metadata only
+    page_text = soup.get_text("\n", strip=True)
+    m = re.search(r"([A-Z][a-z]{2,8}\s+\d{1,2},?\s+\d{4})\s*-\s*\d{1,2}:\d{2}", page_text[:3000])
+    pub_raw = m.group(1) if m else None
     try:
-        # Common formats: "Sep 20, 2026", "Sep 20, 2026 - 10:40"
-        cleaned = re.sub(r"\s*[-–]\s*\d{1,2}:\d{2}.*", "", raw).strip()
-        dt = date_parser.parse(cleaned, fuzzy=True, dayfirst=False)
-        return dt.date().isoformat()
+        pub_dt = dateparser.parse(pub_raw) if pub_raw else None
     except Exception:
-        return None
+        pub_dt = None
 
+    body = None
+    for kw in ({"class_": re.compile(r"(post|blog|entry|article).*(content|body|details)", re.I)},
+               {"class_": re.compile(r"content", re.I)}):
+        cand = soup.find("div", **kw)
+        if cand and len(cand.get_text(strip=True)) > 200:
+            body = cand; break
+    if body is None:
+        best, best_len = None, 0
+        for div in soup.find_all("div"):
+            n = sum(len(p.get_text(strip=True)) for p in div.find_all("p", recursive=False))
+            if n > best_len: best, best_len = div, n
+        body = best
+    body_text = "\n".join(p.get_text(" ", strip=True) for p in body.find_all("p") if p.get_text(strip=True)) if body else ""
 
-def extract_article(url: str) -> Optional[Dict]:
-    resp = safe_get(url)
-    if not resp:
-        return None
-    soup = BeautifulSoup(resp.text, "lxml")
-
-    title_tag = soup.select_one("h1.article-title") or soup.find("h1")
-    title = title_tag.get_text(strip=True) if title_tag else ""
-
-    meta_tag = soup.select_one(".article-meta") or soup.select_one(".post-meta")
-    pub_raw = ""
-    if meta_tag:
-        pub_raw = meta_tag.get_text(" ", strip=True)
-        pub_raw = re.sub(r"\s*\d+\s*$", "", pub_raw)          # remove view count
-        pub_raw = re.sub(r"\s*[-–]\s*\d{1,2}:\d{2}.*", "", pub_raw).strip()
-
-    body_div = soup.select_one(".article-body") or soup.select_one("article") or soup.select_one(".entry-content")
-    if body_div:
-        # Keep paragraph structure; convert <br> to newlines
-        for br in body_div.find_all("br"):
-            br.replace_with("\n")
-        paragraphs = [p.get_text(" ", strip=True) for p in body_div.find_all("p") if p.get_text(strip=True)]
-        body = "\n\n".join(paragraphs)
-        if not body:
-            body = body_div.get_text("\n", strip=True)
-    else:
-        body = ""
-
-    return {
-        "title": title,
-        "url": url,
-        "publication_date_raw": pub_raw,
-        "publication_date": parse_publication_date(pub_raw),
-        "body": body,
-    }
-
-
-def scrape_articles(listings: List[Dict], limit: Optional[int] = None) -> List[Dict]:
-    articles = []
-    to_process = listings[:limit] if limit else listings
-    for item in tqdm(to_process, desc="Articles"):
-        art = extract_article(item["url"])
-        if art:
-            # Prefer title/pub from article page if richer
-            if not art["title"]:
-                art["title"] = item.get("title", "")
-            if not art["publication_date"]:
-                art["publication_date"] = parse_publication_date(item.get("publication_date_raw", ""))
-            articles.append(art)
-        time.sleep(REQUEST_DELAY)
-    return articles
-
-
-# Start with a small limit for debugging (increase later)
-articles = scrape_articles(listings, limit=25)
-print(f"Scraped {len(articles)} full articles")
-print(articles[0]["title"][:80] if articles else "none")
-print("Pub date:", articles[0].get("publication_date") if articles else None)
-print("Body length:", len(articles[0]["body"]) if articles else 0)
+    return {"title": title, "publication_date": pub_dt, "publication_date_raw": pub_raw,
+            "body_text": body_text, "source_url": url}
