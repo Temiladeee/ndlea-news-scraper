@@ -1,19 +1,13 @@
-# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
 .venv/
 venv/
 .env
-
-# Data & outputs
-data/*.csv
-*.csv
-*.xlsx
-*.json
-
-# OS / IDE
 .DS_Store
 .idea/
 .vscode/
-*.swp
+data/*.csv
+data/*.xlsx
+*.csv
+*.xlsx
+!data/.gitkeep
